@@ -1,0 +1,55 @@
+{
+  "name": "vite-plugin-workerd",
+  "version": "0.0.0",
+  "description": "A Vite plugin for authoring and building workerd config",
+  "keywords": [
+    "vite",
+    "vite-plugin",
+    "workerd",
+    "workers",
+    "cloudflare"
+  ],
+  "homepage": "https://github.com/edmundhung/vite-plugin-workerd",
+  "bugs": {
+    "url": "https://github.com/edmundhung/vite-plugin-workerd/issues"
+  },
+  "license": "MIT",
+  "author": "Edmund Hung",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/edmundhung/vite-plugin-workerd.git"
+  },
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "typechecks": "tsc --noEmit",
+    "dev": "tsdown --watch ./src",
+    "test": "vitest"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "vite": "^7.0.0 || ^8.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.6.1",
+    "tsdown": "^0.20.3",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.12",
+    "vitest": "^3.2.4",
+    "workerd": "^1.20260410.1"
+  }
+}
