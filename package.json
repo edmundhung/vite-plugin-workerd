@@ -1,6 +1,6 @@
 {
   "name": "vite-plugin-workerd",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "description": "A Vite plugin for authoring and building workerd config",
   "keywords": [
     "vite",
