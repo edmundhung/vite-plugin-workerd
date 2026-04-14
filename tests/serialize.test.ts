@@ -3,6 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { createDisk, createWorker, defineConfig, durableObject, embed } from "../src/index";
+import { getEmbeddedPath, isEmbeddedPath } from "../src/syntax";
 import { prepareConfigForSerialization, serializeConfig } from "../src/serialize";
 import type { WorkerdConfig } from "../src/workerd";
 
@@ -28,8 +29,7 @@ describe("serializeConfig", () => {
 			],
 		});
 
-		const model = prepareConfigForSerialization(config, {
-			configPath: path.join(root, "workerd.config.ts"),
+		const model = prepareConfigForSerialization(normalizeEmbeddedPaths(config, root), {
 			outputPath: path.join(root, "dist", "workerd.capnp"),
 		});
 		const serialized = serializeConfig(model);
@@ -41,11 +41,11 @@ describe("serializeConfig", () => {
 			  "const config :Workerd.Config = (",
 			  "  services = [",
 			  "      (",
-			  "        name = "worker:1",",
+			  "        name = "worker1",",
 			  "        worker = .worker1,",
 			  "      ),",
 			  "      (",
-			  "        name = "disk:1",",
+			  "        name = "disk1",",
 			  "        disk = (",
 			  "            path = "./.data/do",",
 			  "            writable = true,",
@@ -56,7 +56,7 @@ describe("serializeConfig", () => {
 			  "      (",
 			  "        name = "app",",
 			  "        address = "*:8787",",
-			  "        service = "worker:1",",
+			  "        service = "worker1",",
 			  "        http = (),",
 			  "      ),",
 			  "    ],",
@@ -73,10 +73,10 @@ describe("serializeConfig", () => {
 			  "  durableObjectNamespaces = [",
 			  "      (",
 			  "        className = "Counter",",
-			  "        uniqueKey = "do:worker:1:Counter",",
+			  "        uniqueKey = "do:worker1:Counter",",
 			  "      ),",
 			  "    ],",
-			  "  durableObjectStorage = ( localDisk = "disk:1" ),",
+			  "  durableObjectStorage = ( localDisk = "disk1" ),",
 			  ");",
 			]
 		`);
@@ -132,8 +132,7 @@ describe("serializeConfig", () => {
 			structuredLogging: true,
 		};
 
-		const model = prepareConfigForSerialization(config, {
-			configPath: path.join(root, "workerd.config.ts"),
+		const model = prepareConfigForSerialization(normalizeEmbeddedPaths(config, root), {
 			outputPath: path.join(root, "dist", "workerd.capnp"),
 		});
 		const serialized = serializeConfig(model);
@@ -201,3 +200,22 @@ describe("serializeConfig", () => {
 		`);
 	});
 });
+
+function normalizeEmbeddedPaths<T>(value: T, baseDirectory: string): T {
+	if (isEmbeddedPath(value)) {
+		const embeddedPath = getEmbeddedPath(value);
+		return embed(path.isAbsolute(embeddedPath) ? embeddedPath : path.resolve(baseDirectory, embeddedPath)) as T;
+	}
+
+	if (Array.isArray(value)) {
+		return value.map((item) => normalizeEmbeddedPaths(item, baseDirectory)) as T;
+	}
+
+	if (typeof value !== "object" || value === null) {
+		return value;
+	}
+
+	return Object.fromEntries(
+		Object.entries(value).map(([key, nestedValue]) => [key, normalizeEmbeddedPaths(nestedValue, baseDirectory)]),
+	) as T;
+}

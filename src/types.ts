@@ -172,25 +172,15 @@ export interface DefineConfigInput {
 	structuredLogging?: boolean;
 }
 
-export interface WorkerdConfigContext {
-	mode: string;
-}
-
-export interface WorkerdPluginCommonOptions {
-	output?: string;
-}
-
-export interface WorkerdPluginFileOptions extends WorkerdPluginCommonOptions {
+export interface WorkerdPluginFileOptions {
 	configFile?: string;
 	config?: never;
 }
 
-export interface WorkerdPluginInlineOptions extends WorkerdPluginCommonOptions {
+export interface WorkerdPluginInlineOptions {
 	config:
 		| WorkerdConfig
-		| ((
-				env: WorkerdConfigContext,
-		  ) => WorkerdConfig | Promise<WorkerdConfig>);
+		| (() => WorkerdConfig | Promise<WorkerdConfig>);
 	configFile?: never;
 }
 

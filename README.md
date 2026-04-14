@@ -72,7 +72,7 @@ using Workerd = import "/workerd/workerd.capnp";
 const config :Workerd.Config = (
   services = [
       (
-        name = "worker:1",
+        name = "worker1",
         worker = .worker1,
       ),
       (
@@ -84,7 +84,7 @@ const config :Workerd.Config = (
       (
         name = "app",
         address = "*:8787",
-        service = "worker:1",
+        service = "worker1",
         http = (),
       ),
     ],
@@ -94,7 +94,7 @@ const worker1 :Workerd.Worker = (
   modules = [
       (
         name = "main",
-        esModule = embed "../src/api.js",
+        esModule = embed "workers/worker1.js",
       ),
     ],
   compatibilityDate = "2026-01-01",
@@ -114,7 +114,7 @@ const worker2 :Workerd.Worker = (
   modules = [
       (
         name = "main",
-        esModule = embed "../src/auth.js",
+        esModule = embed "workers/worker2.js",
       ),
     ],
   compatibilityDate = "2026-01-01",

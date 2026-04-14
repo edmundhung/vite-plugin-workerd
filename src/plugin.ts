@@ -1,132 +1,251 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { loadConfigFromFile, type ConfigEnv, type Plugin, type ResolvedConfig } from "vite";
+import { loadConfigFromFile, type ConfigEnv, type Plugin } from "vite";
 
+import {
+	createBuildApp,
+	createBuildContext,
+	createWorkerEnvironmentOptions,
+	rewriteConfigForBundledWorkers,
+	type WorkerdBuildContext,
+	writeSerializedConfig,
+} from "./build";
+import { embed, getEmbeddedPath, isEmbeddedPath } from "./syntax";
 import { prepareConfigForSerialization, serializeConfig } from "./serialize";
 import type { WorkerdPluginOptions } from "./types";
 import type { WorkerdConfig } from "./workerd";
 
 const DEFAULT_CONFIG_BASENAME = "workerd.config";
-const DEFAULT_OUTPUT_FILE = "workerd.capnp";
 const DEFAULT_WORKERD_CONFIG_EXTENSIONS = [".ts", ".mts", ".cts", ".js", ".mjs", ".cjs"] as const;
 
+/**
+ * Creates the Vite plugin that bundles worker services and emits `workerd.capnp`.
+ */
 export function workerd(options: WorkerdPluginOptions = {}): Plugin {
-	let viteConfig: ResolvedConfig | undefined;
+	let buildContext!: WorkerdBuildContext;
 
 	return {
 		name: "vite-plugin-workerd",
 		apply: "build",
-		configResolved(resolvedConfig) {
-			viteConfig = resolvedConfig;
+		sharedDuringBuild: true,
+		async config(userConfig, env) {
+			const root = resolveConfigRoot(userConfig);
+			const config = await loadWorkerdConfig(options, root, env);
+			const outDir = userConfig.build?.outDir ?? "dist";
+			const existingBuildApp = userConfig.builder?.buildApp;
+
+			buildContext = createBuildContext({
+				root,
+				outDir,
+				config,
+			});
+
+			return {
+				appType: "custom",
+				environments: Object.fromEntries(
+					buildContext.workerTargets.map((target) => [
+						target.environmentName,
+						createWorkerEnvironmentOptions(target),
+					]),
+				),
+				builder: {
+					async buildApp(builder) {
+						if (existingBuildApp) {
+							await existingBuildApp(builder);
+						}
+
+						return createBuildApp(buildContext)(builder);
+					},
+				},
+			};
 		},
-		async generateBundle() {
-			if (!viteConfig) {
-				throw new Error("Vite config was not resolved before generating the workerd config.");
+		generateBundle(_, bundle) {
+			const target = buildContext.workerTargets.find(
+				(target) => target.environmentName === this.environment.name,
+			);
+			if (!target) {
+				return;
 			}
 
-			const loadedConfig = await loadWorkerdConfig(viteConfig.root, viteConfig.mode, options);
-			const outputFile = normalizeOutputFile(options.output ?? DEFAULT_OUTPUT_FILE);
-			const outputPath = path.resolve(viteConfig.root, viteConfig.build.outDir, outputFile);
-			const model = prepareConfigForSerialization(loadedConfig.config, {
-				configPath: loadedConfig.path,
-				outputPath,
-			});
-			const source = serializeConfig(model);
+			const modules = [];
 
-			this.emitFile({
-				type: "asset",
-				fileName: outputFile,
-				source,
-			});
+			for (const output of Object.values(bundle)) {
+				if (output.type !== "chunk") {
+					continue;
+				}
+
+				modules.push({
+					name: output.isEntry ? "main" : `./${output.fileName}`,
+					esModule: embed(path.join(target.outputDirectory, output.fileName)),
+				});
+			}
+
+			if (modules.length === 0) {
+				throw new Error(
+					`Expected worker build to emit at least one JavaScript chunk for service \`${target.serviceName}\`.`,
+				);
+			}
+
+			buildContext.bundledWorkerModulesByService.set(
+				target.serviceName,
+				modules,
+			);
+		},
+		buildApp: {
+			order: "post",
+			async handler() {
+				const bundledConfig = rewriteConfigForBundledWorkers(buildContext);
+				const model = prepareConfigForSerialization(bundledConfig, {
+					outputPath: buildContext.outputPath,
+				});
+				const source = serializeConfig(model);
+
+				writeSerializedConfig({
+					outputPath: buildContext.outputPath,
+					source,
+				});
+			},
 		},
 	};
 }
 
+/**
+ * Loads the workerd config from inline options or the default config file on disk.
+ */
 async function loadWorkerdConfig(
-	root: string,
-	mode: string,
 	options: WorkerdPluginOptions,
-): Promise<{ path: string; config: WorkerdConfig }> {
-	if ("config" in options && options.config !== undefined) {
+	root: string,
+	env: ConfigEnv,
+): Promise<WorkerdConfig> {
+	if (options.config !== undefined) {
 		const resolvedConfig =
 			typeof options.config === "function"
-				? await options.config({ mode })
+				? await options.config()
 				: options.config;
 
-		return {
-			path: path.join(root, "vite.config.ts"),
-			config: normalizeLoadedConfig(resolvedConfig),
-		};
+		return parseWorkerdConfig(resolvedConfig, root);
 	}
 
 	const configFile = options.configFile ?? findDefaultConfigFile(root);
+
 	if (!configFile) {
 		throw new Error(
 			`Could not find a default workerd config file matching ${DEFAULT_CONFIG_BASENAME}.{${DEFAULT_WORKERD_CONFIG_EXTENSIONS.map((extension) => extension.slice(1)).join(",")}}.`,
 		);
 	}
-	const configPath = path.resolve(root, configFile);
-	const configEnv: ConfigEnv = {
-		command: "build",
-		mode,
-		isSsrBuild: false,
-		isPreview: false,
-	};
 
-	const loaded = await loadConfigFromFile(configEnv, configPath, root);
+	const configPath = path.resolve(root, configFile);
+	const loaded = await loadConfigFromFile(env, configPath, root);
+
 	if (!loaded) {
 		throw new Error(`Could not load ${configFile}.`);
 	}
 
-	return {
-		path: loaded.path,
-		config: normalizeLoadedConfig(loaded.config),
-	};
+	return parseWorkerdConfig(loaded.config, path.dirname(loaded.path));
 }
 
-function normalizeLoadedConfig(config: unknown): WorkerdConfig {
-	if (!isRawConfigObject(config)) {
+/**
+ * Validates a loaded config object and resolves embedded paths against a base directory.
+ */
+function parseWorkerdConfig(config: unknown, baseDirectory: string): WorkerdConfig {
+	if (!isPlainObject(config)) {
 		throw new Error("workerd config must export an object.");
 	}
 
-	if (!Array.isArray(config.services)) {
-		throw new Error("workerd config must include a `services` array.");
+	if (!Array.isArray(config.services) || !Array.isArray(config.sockets)) {
+		throw new Error(`workerd config must include "services" and "sockets" arrays.`);
 	}
 
-	if (!Array.isArray(config.sockets)) {
-		throw new Error("workerd config must include a `sockets` array.");
-	}
+	const serviceNames = new Set<string>();
 
 	for (const [index, service] of config.services.entries()) {
-		if (!isRawConfigObject(service)) {
+		if (!isPlainObject(service)) {
 			throw new Error(`workerd config service at index ${index} must be an object.`);
 		}
+
+		if (typeof service.name !== "string") {
+			throw new Error(`workerd config service at index ${index} must include a string \`name\`.`);
+		}
+
+		if (serviceNames.has(service.name)) {
+			throw new Error(`workerd config must not contain duplicate service names: \`${service.name}\`.`);
+		}
+
+		serviceNames.add(service.name);
 	}
 
 	for (const [index, socket] of config.sockets.entries()) {
-		if (!isRawConfigObject(socket)) {
+		if (!isPlainObject(socket)) {
 			throw new Error(`workerd config socket at index ${index} must be an object.`);
 		}
 	}
 
-	return {
+	return normalizeEmbeddedPaths({
 		...config,
-		services: config.services as WorkerdConfig["services"],
-		sockets: config.sockets as WorkerdConfig["sockets"],
-	};
+		services: config.services,
+		sockets: config.sockets,
+	}, baseDirectory);
 }
 
-function isRawConfigObject(
-	value: unknown,
-): value is { services?: unknown; sockets?: unknown; [key: string]: unknown } {
-	return typeof value === "object" && value !== null;
+/**
+ * Checks whether a value is a plain object during config validation.
+ */
+function isPlainObject(
+	obj: unknown,
+): obj is Record<string | number | symbol, unknown> {
+	return (
+		!!obj &&
+		obj.constructor === Object &&
+		Object.getPrototypeOf(obj) === Object.prototype
+	);
 }
 
-function normalizeOutputFile(value: string): string {
-	return value.split(path.sep).join("/");
+/**
+ * Resolves every embedded path in a config tree against a base directory.
+ */
+function normalizeEmbeddedPaths<Value>(value: Value, baseDirectory: string): Value {
+	if (isEmbeddedPath(value)) {
+		const embeddedPath = getEmbeddedPath(value);
+
+		if (path.isAbsolute(embeddedPath)) {
+			return value;
+		}
+
+		return embed(path.resolve(baseDirectory, embeddedPath)) as Value;
+	}
+
+	if (Array.isArray(value)) {
+		return value.map((item) => normalizeEmbeddedPaths(item, baseDirectory)) as Value;
+	}
+
+	if (isPlainObject(value)) {
+		return Object.fromEntries(
+			Object.entries(value).map(([key, nestedValue]) => [key, normalizeEmbeddedPaths(nestedValue, baseDirectory)]),
+		) as Value;
+	}
+
+	return value;
+}
+/**
+ * Resolves the base directory used for default workerd config discovery.
+ * Vite passes `configFile` into `config()` at runtime even though `UserConfig` doesn't type it.
+ */
+function resolveConfigRoot(userConfig: { root?: string; configFile?: string | false }): string {
+	const baseDirectory = typeof userConfig.configFile === "string"
+		? path.dirname(userConfig.configFile)
+		: process.cwd();
+
+	if (typeof userConfig.root === "string") {
+		return path.resolve(baseDirectory, userConfig.root);
+	}
+
+	return baseDirectory;
 }
 
+/**
+ * Finds the first matching `workerd.config.*` file in the given root directory.
+ */
 function findDefaultConfigFile(root: string): string | undefined {
 	for (const extension of DEFAULT_WORKERD_CONFIG_EXTENSIONS) {
 		const fileName = `${DEFAULT_CONFIG_BASENAME}${extension}`;

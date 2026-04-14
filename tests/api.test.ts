@@ -73,14 +73,14 @@ describe("defineConfig", () => {
 			  "extensions": undefined,
 			  "services": [
 			    {
-			      "name": "worker:1",
+			      "name": "worker1",
 			      "worker": {
 			        "bindings": [
 			          {
 			            "name": "AUTH",
 			            "service": {
 			              "entrypoint": "Auth",
-			              "name": "worker:2",
+			              "name": "worker2",
 			              "props": {
 			                "json": "{"issuer":"https://issuer.example"}",
 			              },
@@ -89,19 +89,19 @@ describe("defineConfig", () => {
 			          {
 			            "durableObjectNamespace": {
 			              "className": "Counter",
-			              "serviceName": "worker:2",
+			              "serviceName": "worker2",
 			            },
 			            "name": "COUNTERS",
 			          },
 			        ],
 			        "cacheApiOutbound": {
-			          "name": "external:1",
+			          "name": "external1",
 			        },
 			        "compatibilityDate": "2025-08-01",
 			        "compatibilityFlags": undefined,
 			        "durableObjectNamespaces": undefined,
 			        "durableObjectStorage": undefined,
-			        "globalOutbound": "network:1",
+			        "globalOutbound": "network1",
 			        "modules": [
 			          {
 			            "esModule": {
@@ -111,15 +111,15 @@ describe("defineConfig", () => {
 			          },
 			        ],
 			        "streamingTails": [
-			          "worker:4",
+			          "worker4",
 			        ],
 			        "tails": [
-			          "worker:3",
+			          "worker3",
 			        ],
 			      },
 			    },
 			    {
-			      "name": "worker:2",
+			      "name": "worker2",
 			      "worker": {
 			        "bindings": [],
 			        "cacheApiOutbound": undefined,
@@ -130,11 +130,11 @@ describe("defineConfig", () => {
 			            "className": "Counter",
 			            "ephemeralLocal": undefined,
 			            "preventEviction": true,
-			            "uniqueKey": "do:worker:2:Counter",
+			            "uniqueKey": "do:worker2:Counter",
 			          },
 			        ],
 			        "durableObjectStorage": {
-			          "localDisk": "disk:1",
+			          "localDisk": "disk1",
 			        },
 			        "globalOutbound": undefined,
 			        "modules": [
@@ -154,10 +154,10 @@ describe("defineConfig", () => {
 			        "path": "./.data/do",
 			        "writable": true,
 			      },
-			      "name": "disk:1",
+			      "name": "disk1",
 			    },
 			    {
-			      "name": "network:1",
+			      "name": "network1",
 			      "network": {
 			        "allow": [
 			          "public",
@@ -174,10 +174,10 @@ describe("defineConfig", () => {
 			          "certificateHost": "example.com",
 			        },
 			      },
-			      "name": "external:1",
+			      "name": "external1",
 			    },
 			    {
-			      "name": "worker:3",
+			      "name": "worker3",
 			      "worker": {
 			        "bindings": [],
 			        "cacheApiOutbound": undefined,
@@ -199,7 +199,7 @@ describe("defineConfig", () => {
 			      },
 			    },
 			    {
-			      "name": "worker:4",
+			      "name": "worker4",
 			      "worker": {
 			        "bindings": [],
 			        "cacheApiOutbound": undefined,
@@ -226,7 +226,7 @@ describe("defineConfig", () => {
 			      "address": "*:8787",
 			      "http": {},
 			      "name": "app",
-			      "service": "worker:1",
+			      "service": "worker1",
 			    },
 			  ],
 			  "structuredLogging": undefined,
@@ -286,7 +286,7 @@ describe("defineConfig", () => {
 		});
 
 		expect(config.services[0]).toEqual({
-			name: "worker:1",
+			name: "worker1",
 			worker: {
 				modules: [{ name: "main", esModule: embed("./src/proxy.ts") }],
 				compatibilityDate: "2025-08-01",
@@ -296,7 +296,7 @@ describe("defineConfig", () => {
 						name: "APP",
 						service: {
 							entrypoint: undefined,
-							name: "worker:2",
+							name: "worker2",
 							props: {
 								json: '{"issuer":"https://issuer.example"}',
 							},

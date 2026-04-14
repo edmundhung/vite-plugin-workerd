@@ -16,7 +16,7 @@ export interface ServiceDesignator {
 
 export type ServiceReferenceConfig = string | ServiceDesignator;
 
-export interface SourceBackedModule {
+export interface WorkerEsModule {
 	name: string;
 	esModule: EmbeddedPath;
 }
@@ -46,7 +46,7 @@ export type WorkerBinding =
 export type DurableObjectStorageConfig = { inMemory: true } | { localDisk: string };
 
 export interface WorkerConfig {
-	modules?: SourceBackedModule[];
+	modules?: WorkerEsModule[];
 	compatibilityDate?: string;
 	compatibilityFlags?: string[];
 	bindings?: WorkerBinding[];

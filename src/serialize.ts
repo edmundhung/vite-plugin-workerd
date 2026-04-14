@@ -23,12 +23,10 @@ interface CapnpReference {
 }
 
 export interface SerializeConfigOptions {
-	configPath: string;
 	outputPath: string;
 }
 
 interface SerializeContext {
-	configDir: string;
 	outputDir: string;
 }
 
@@ -46,25 +44,30 @@ export interface SerializedConfigModel {
 	workers: Array<{ constantName: string; worker: CapnpNode }>;
 }
 
+/**
+ * Prepares a normalized workerd config for Cap'n Proto serialization.
+ */
 export function prepareConfigForSerialization(
 	config: WorkerdConfig,
 	options: SerializeConfigOptions,
 ): SerializedConfigModel {
 	const context: SerializeContext = {
-		configDir: path.dirname(options.configPath),
 		outputDir: path.dirname(options.outputPath),
 	};
 
 	const prepared = prepareConfig(config);
 	return {
-		root: normalizeNode(prepared.root, context, []),
+		root: normalizeNode(prepared.root, context),
 		workers: prepared.workers.map(({ constantName, worker }) => ({
 			constantName,
-			worker: normalizeNode(worker, context, ["worker"]),
+			worker: normalizeNode(worker, context),
 		})),
 	};
 }
 
+/**
+ * Serializes a prepared config model into `workerd.capnp` source text.
+ */
 export function serializeConfig(model: SerializedConfigModel): string {
 	const output = [
 		'using Workerd = import "/workerd/workerd.capnp";',
@@ -82,6 +85,9 @@ export function serializeConfig(model: SerializedConfigModel): string {
 	return `${output.join("\n")}\n`;
 }
 
+/**
+ * Replaces worker service bodies with top-level worker constants and references.
+ */
 function prepareConfig(config: WorkerdConfig): PreparedConfig {
 	const services = Array.isArray(config.services) ? config.services : [];
 	const workers: Array<{ constantName: string; worker: RawObject }> = [];
@@ -113,17 +119,19 @@ function prepareConfig(config: WorkerdConfig): PreparedConfig {
 	};
 }
 
+/**
+ * Normalizes raw config values into serializable Cap'n Proto nodes.
+ */
 function normalizeNode(
 	value: unknown,
 	context: SerializeContext,
-	pathSegments: string[],
 ): CapnpNode {
 	if (isEmbeddedPath(value)) {
 		return embedNode(
 			normalizeSlashes(
 				path.relative(
 					context.outputDir,
-					resolveConfigRelativePath(getEmbeddedPath(value), context.configDir),
+					getEmbeddedPath(value),
 				),
 			),
 		);
@@ -147,9 +155,7 @@ function normalizeNode(
 	}
 
 	if (Array.isArray(value)) {
-		return value.map((item, index) =>
-			normalizeNode(item, context, [...pathSegments, String(index)]),
-		);
+		return value.map((item) => normalizeNode(item, context));
 	}
 
 	const node: CapnpStruct = {};
@@ -158,7 +164,7 @@ function normalizeNode(
 			continue;
 		}
 
-		const normalizedValue = normalizeNode(nestedValue, context, [...pathSegments, key]);
+		const normalizedValue = normalizeNode(nestedValue, context);
 		if (Array.isArray(normalizedValue) && normalizedValue.length === 0) {
 			continue;
 		}
@@ -169,10 +175,16 @@ function normalizeNode(
 	return node;
 }
 
+/**
+ * Serializes a single Cap'n Proto node to a string.
+ */
 function serializeNode(node: CapnpNode): string {
 	return serializeNodeLines(node).join("\n");
 }
 
+/**
+ * Serializes a node into line-oriented output for nested formatting.
+ */
 function serializeNodeLines(node: CapnpNode): string[] {
 	if (isEmbedNode(node)) {
 		return [`embed ${quote(node.$embed)}`];
@@ -201,6 +213,9 @@ function serializeNodeLines(node: CapnpNode): string[] {
 	return [String(node)];
 }
 
+/**
+ * Serializes a list node using compact or multi-line formatting.
+ */
 function serializeListLines(node: CapnpList): string[] {
 	if (node.length === 0) {
 		return ["[]"];
@@ -219,6 +234,9 @@ function serializeListLines(node: CapnpList): string[] {
 	return lines;
 }
 
+/**
+ * Serializes a struct node using compact or multi-line formatting.
+ */
 function serializeStructLines(node: CapnpStruct): string[] {
 	const fields = Object.entries(node).filter(
 		(entry): entry is [string, CapnpNode] => entry[1] !== undefined,
@@ -240,6 +258,9 @@ function serializeStructLines(node: CapnpStruct): string[] {
 	return lines;
 }
 
+/**
+ * Serializes a single struct field.
+ */
 function serializeFieldLines(name: string, value: CapnpNode): string[] {
 	const valueLines = serializeNodeLines(value);
 	if (valueLines.length === 1) {
@@ -249,17 +270,26 @@ function serializeFieldLines(name: string, value: CapnpNode): string[] {
 	return [`${name} = ${valueLines[0]}`, ...indentLines(valueLines.slice(1), 1)];
 }
 
+/**
+ * Indents serialized lines by the requested nesting level.
+ */
 function indentLines(lines: string[], level: number): string[] {
 	const prefix = INDENT.repeat(level);
 	return lines.map((line) => `${prefix}${line}`);
 }
 
+/**
+ * Adds a trailing comma to the last line of a serialized block.
+ */
 function withTrailingComma(lines: string[]): string[] {
 	return lines.map((line, index) =>
 		index === lines.length - 1 ? `${line},` : line,
 	);
 }
 
+/**
+ * Checks whether a node serializes as a single scalar, embed, or reference value.
+ */
 function isLeafNode(node: CapnpNode): boolean {
 	return (
 		node === null ||
@@ -271,6 +301,9 @@ function isLeafNode(node: CapnpNode): boolean {
 	);
 }
 
+/**
+ * Checks whether a node can stay on one line in serialized output.
+ */
 function isCompactNode(node: CapnpNode): boolean {
 	if (isLeafNode(node)) {
 		return true;
@@ -290,38 +323,58 @@ function isCompactNode(node: CapnpNode): boolean {
 	return false;
 }
 
+/**
+ * Wraps an embed string as a serialization node.
+ */
 function embedNode(value: string): CapnpEmbed {
 	return { $embed: value };
 }
 
+/**
+ * Wraps a constant reference as a serialization node.
+ */
 function referenceNode(value: string): CapnpReference {
 	return { $ref: value };
 }
 
+/**
+ * Checks whether a value is a raw object-like config node.
+ */
 function isRawObject(value: unknown): value is RawObject {
 	return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/**
+ * Checks whether a raw service record contains a worker.
+ */
 function isWorkerService(value: unknown): value is { name: unknown; worker: RawObject } {
 	return isRawObject(value) && "worker" in value && isRawObject(value.worker);
 }
 
+/**
+ * Checks whether a node is an embed placeholder.
+ */
 function isEmbedNode(value: unknown): value is CapnpEmbed {
 	return typeof value === "object" && value !== null && "$embed" in value;
 }
 
+/**
+ * Checks whether a node is a constant reference placeholder.
+ */
 function isReferenceNode(value: unknown): value is CapnpReference {
 	return typeof value === "object" && value !== null && "$ref" in value;
 }
 
-function resolveConfigRelativePath(value: string, configDir: string): string {
-	return path.isAbsolute(value) ? value : path.resolve(configDir, value);
-}
-
+/**
+ * Quotes a string for Cap'n Proto output using JSON escaping rules.
+ */
 function quote(value: string): string {
 	return JSON.stringify(value);
 }
 
+/**
+ * Normalizes paths to forward slashes for stable serialized embed paths.
+ */
 function normalizeSlashes(value: string): string {
 	return value.split(path.sep).join("/");
 }

@@ -14,6 +14,5 @@ export type {
 	WorkerdConfig,
 } from "./workerd";
 export type {
-	WorkerdConfigContext,
 	WorkerdPluginOptions,
 } from "./types";

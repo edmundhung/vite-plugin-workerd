@@ -38,10 +38,16 @@ import type {
 } from "./workerd";
 import { embed } from "./syntax";
 
+/**
+ * Marks a worker export as an entrypoint accessor.
+ */
 export function workerEntrypoint<Props extends WorkerProps = WorkerProps>(): WorkerEntrypointExport<Props> {
 	return { kind: "workerEntrypoint" };
 }
 
+/**
+ * Marks a worker export as a Durable Object and validates mutually exclusive options.
+ */
 export function durableObject(options: DurableObjectOptions = {}): DurableObjectExport {
 	if (options.ephemeralLocal && options.uniqueKey) {
 		throw new Error(
@@ -55,6 +61,9 @@ export function durableObject(options: DurableObjectOptions = {}): DurableObject
 	};
 }
 
+/**
+ * Creates a worker definition with export accessors and socket helpers.
+ */
 export function createWorker<Exports extends WorkerExports = {}>(
 	entry: string,
 	options?: WorkerOptions<Exports>,
@@ -105,6 +114,9 @@ export function createWorker<Exports extends WorkerExports = {}>(
 	return worker;
 }
 
+/**
+ * Wraps a network config so it can be lowered into a named service.
+ */
 export function createNetwork(config: NetworkConfig): NetworkDefinition {
 	return {
 		kind: "network-definition",
@@ -112,6 +124,9 @@ export function createNetwork(config: NetworkConfig): NetworkDefinition {
 	};
 }
 
+/**
+ * Wraps an external server config so it can be lowered into a named service.
+ */
 export function createExternalServer(
 	config: ExternalServerConfig,
 ): ExternalServerDefinition {
@@ -121,6 +136,9 @@ export function createExternalServer(
 	};
 }
 
+/**
+ * Wraps a disk config so it can be lowered into a named service.
+ */
 export function createDisk(config: DiskConfig): DiskDefinition {
 	return {
 		kind: "disk-definition",
@@ -128,6 +146,9 @@ export function createDisk(config: DiskConfig): DiskDefinition {
 	};
 }
 
+/**
+ * Lowers helper-authored sockets and services into a raw workerd config.
+ */
 export function defineConfig(input: DefineConfigInput = {}): WorkerdConfig {
 	const context: ResolutionContext = {
 		services: [],
@@ -157,6 +178,9 @@ export function defineConfig(input: DefineConfigInput = {}): WorkerdConfig {
 	};
 }
 
+/**
+ * Resolves a socket helper or raw socket into a workerd socket.
+ */
 function resolveSocket(socket: SocketInput, context: ResolutionContext): WorkerdSocket {
 	if (!isSocketDefinition(socket)) {
 		return {
@@ -181,10 +205,16 @@ function resolveSocket(socket: SocketInput, context: ResolutionContext): Workerd
 	return lowered;
 }
 
+/**
+ * Checks whether a socket input came from `worker.listen()`.
+ */
 function isSocketDefinition(socket: SocketInput): socket is SocketDefinition {
 	return "kind" in socket && socket.kind === "socket-definition";
 }
 
+/**
+ * Interns a worker definition as a named service and returns its service name.
+ */
 function ensureWorkerService(
 	worker: WorkerDefinition,
 	context: ResolutionContext,
@@ -208,6 +238,9 @@ function ensureWorkerService(
 	return serviceName;
 }
 
+/**
+ * Interns a network definition as a named service.
+ */
 function ensureNetworkService(
 	network: NetworkDefinition,
 	context: ResolutionContext,
@@ -226,6 +259,9 @@ function ensureNetworkService(
 	return serviceName;
 }
 
+/**
+ * Interns an external server definition as a named service.
+ */
 function ensureExternalService(
 	external: ExternalServerDefinition,
 	context: ResolutionContext,
@@ -244,6 +280,9 @@ function ensureExternalService(
 	return serviceName;
 }
 
+/**
+ * Interns a disk definition as a named service.
+ */
 function ensureDiskService(disk: DiskDefinition, context: ResolutionContext): string {
 	const existing = context.diskNames.get(disk);
 	if (existing) {
@@ -259,6 +298,9 @@ function ensureDiskService(disk: DiskDefinition, context: ResolutionContext): st
 	return serviceName;
 }
 
+/**
+ * Lowers a high-level worker definition into a raw workerd worker config.
+ */
 function resolveWorker(
 	worker: WorkerDefinition,
 	serviceName: string,
@@ -297,6 +339,9 @@ function resolveWorker(
 	};
 }
 
+/**
+ * Lowers one helper binding into a workerd binding record.
+ */
 function resolveBinding(
 	name: string,
 	target: BindingTarget,
@@ -331,6 +376,9 @@ function resolveBinding(
 	};
 }
 
+/**
+ * Collects Durable Object namespace declarations from worker exports.
+ */
 function resolveDurableObjectNamespaces(
 	exports: WorkerExports,
 	serviceName: string,
@@ -355,6 +403,9 @@ function resolveDurableObjectNamespaces(
 	return namespaces.length > 0 ? namespaces : undefined;
 }
 
+/**
+ * Validates and lowers Durable Object storage for workers that export Durable Objects.
+ */
 function resolveDurableObjectStorage(
 	storage: DurableObjectStorage | undefined,
 	namespaces: DurableObjectNamespaceConfig[] | undefined,
@@ -379,6 +430,9 @@ function resolveDurableObjectStorage(
 	};
 }
 
+/**
+ * Normalizes `cacheApiOutbound` to a service designator.
+ */
 function resolveCacheApiOutbound(
 	target: Exclude<BindingTarget, DurableObjectReference>,
 	context: ResolutionContext,
@@ -386,6 +440,9 @@ function resolveCacheApiOutbound(
 	return normalizeServiceDesignator(resolveServiceReference(target, context));
 }
 
+/**
+ * Converts a helper-level service target into a raw service reference or service name.
+ */
 function resolveServiceReference(
 	target:
 		| NetworkDefinition
@@ -416,6 +473,9 @@ function resolveServiceReference(
 	return ensureExternalService(target, context);
 }
 
+/**
+ * Clones an explicit service designator and passes through string service names.
+ */
 function resolveServiceDesignator(
 	designator: string | ServiceDesignator,
 ): string | ServiceDesignator {
@@ -426,6 +486,9 @@ function resolveServiceDesignator(
 	return { ...designator };
 }
 
+/**
+ * Converts a string service designator into object form.
+ */
 function normalizeServiceDesignator(
 	designator: string | ServiceDesignator,
 ): ServiceDesignator {
@@ -436,14 +499,20 @@ function normalizeServiceDesignator(
 	return designator;
 }
 
+/**
+ * Allocates the next generated service name for a helper-defined resource.
+ */
 function nextServiceName(
 	kind: keyof ResolutionContext["counters"],
 	context: ResolutionContext,
 ): string {
 	const index = ++context.counters[kind];
-	return `${kind}:${index}`;
+	return `${kind}${index}`;
 }
 
+/**
+ * Checks whether a worker export is a Durable Object declaration.
+ */
 function isDurableObjectExport(value: WorkerExport): value is DurableObjectExport {
 	return value.kind === "durableObject";
 }

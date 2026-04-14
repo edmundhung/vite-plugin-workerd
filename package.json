@@ -36,7 +36,9 @@
     "build": "tsdown",
     "typechecks": "tsc --noEmit",
     "dev": "tsdown --watch ./src",
-    "test": "vitest"
+    "test:unit": "vitest",
+    "test:examples": "pnpm --filter ./examples/* run test",
+    "test": "pnpm run test:unit run && pnpm run test:examples"
   },
   "publishConfig": {
     "access": "public"
