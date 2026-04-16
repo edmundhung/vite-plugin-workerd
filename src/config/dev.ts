@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -18,7 +17,6 @@ import {
 	INIT_PATH,
 	RUNNER_OBJECT_CLASS_NAME,
 	RUNNER_OBJECT_BINDING,
-	UNSAFE_EVAL_BINDING,
 	WORKER_LOADER_BINDING,
 } from "../runtime/shared";
 import type {
@@ -115,8 +113,8 @@ export async function loadRunnerWorkerModuleSource(): Promise<string> {
 function resolveRunnerWorkerEntryPath(): string {
 	const candidatePaths = [
 		fileURLToPath(new URL("./runtime/runner-worker.js", import.meta.url)),
-		fileURLToPath(new URL("../../dist/runtime/runner-worker.js", import.meta.url)),
 		fileURLToPath(new URL("../runtime/runner-worker.ts", import.meta.url)),
+		fileURLToPath(new URL("../../dist/runtime/runner-worker.js", import.meta.url)),
 	];
 
 	for (const candidatePath of candidatePaths) {
@@ -397,7 +395,6 @@ function createControlServiceConfig(
 			modules: createWrapperModules(controlModuleSource, runtimeModuleSource),
 			bindings: [
 				{ name: RUNNER_OBJECT_BINDING, durableObjectNamespace: RUNNER_OBJECT_CLASS_NAME },
-				{ name: UNSAFE_EVAL_BINDING, unsafeEval: true },
 			],
 			durableObjectNamespaces: [
 				{
@@ -437,7 +434,6 @@ function assertInternalNameAvailability(worker: WorkerConfig): void {
 		if (
 			binding.name === CONTROL_SERVICE_BINDING ||
 			binding.name === RUNNER_OBJECT_BINDING ||
-			binding.name === UNSAFE_EVAL_BINDING ||
 			binding.name === WORKER_LOADER_BINDING
 		) {
 			throw new Error(`Binding name ${JSON.stringify(binding.name)} is reserved for vite dev internals.`);

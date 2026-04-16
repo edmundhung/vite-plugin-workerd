@@ -13,7 +13,6 @@ import {
 import { embed } from "../config/syntax";
 import { loadWorkerdConfig, resolveConfigRoot } from "../config/load";
 import { createWorkerdDevPlugin, type WorkerdDevPluginContext } from "./dev";
-import { createWorkerdDevVirtualModulesPlugin } from "./dev-virtual-modules";
 import { prepareConfigForSerialization, serializeConfig } from "../config/serialize";
 import type { WorkerdPluginOptions } from "./types";
 
@@ -25,7 +24,6 @@ export function workerd(options: WorkerdPluginOptions = {}): PluginOption {
 
 	return [
 		createWorkerdBuildPlugin(options),
-		createWorkerdDevVirtualModulesPlugin(devContext),
 		createWorkerdDevPlugin(options, devContext),
 	];
 }

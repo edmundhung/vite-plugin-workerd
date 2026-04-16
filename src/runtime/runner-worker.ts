@@ -1,10 +1,6 @@
 /// <reference types="@cloudflare/workers-types/experimental" />
 
 import { DurableObject } from "cloudflare:workers";
-import {
-	ModuleRunner,
-	ssrModuleExportsKey,
-} from "vite/module-runner";
 
 import {
 	CONTROL_SERVICE_BINDING,
@@ -15,21 +11,14 @@ import {
 	type ResolveWorkerCodeResult,
 	RUNNER_OBJECT_BINDING,
 	RUNNER_OBJECT_ID,
-	UNSAFE_EVAL_BINDING,
-	VIRTUAL_WORKER_ENTRY,
 	WORKER_CODE_PATH,
 	type WorkerLoaderCodePayload,
 	WORKER_LOADER_BINDING,
 } from "./shared";
-interface UnsafeEvalBinding {
-	// eslint-disable-next-line @typescript-eslint/no-unsafe-function-type
-	eval(code: string, filename: string): Function;
-}
 
 interface RunnerEnv {
 	[CONTROL_SERVICE_BINDING]?: { fetch(request: Request): Promise<Response> };
 	[RUNNER_OBJECT_BINDING]?: DurableObjectNamespace;
-	[UNSAFE_EVAL_BINDING]?: UnsafeEvalBinding;
 	[WORKER_LOADER_BINDING]?: WorkerLoader;
 	[key: string]: unknown;
 }
@@ -59,7 +48,6 @@ const workerCodeCacheEpochByService = new Map<string, number>();
 const INTERNAL_BINDING_NAMES = new Set([
 	CONTROL_SERVICE_BINDING,
 	RUNNER_OBJECT_BINDING,
-	UNSAFE_EVAL_BINDING,
 	WORKER_LOADER_BINDING,
 ]);
 
@@ -146,10 +134,9 @@ export async function dispatchHotWorkerEntrypointRpc(options: {
 }
 
 /**
- * Singleton Durable Object that owns the Vite module runner and control-plane state.
+ * Singleton Durable Object that owns the Vite transport and worker-code control-plane state.
  */
 export class __VITE_RUNNER_OBJECT__ extends DurableObject<RunnerEnv> {
-	#runner?: ModuleRunner;
 	#webSocket?: WebSocket;
 	#pendingWorkerCodeRequests = new Map<string, PendingWorkerCodeRequest>();
 
@@ -169,23 +156,10 @@ export class __VITE_RUNNER_OBJECT__ extends DurableObject<RunnerEnv> {
 			return Response.json(await this.#getWorkerCode(serviceName));
 		}
 
-		const runner = this.#runner;
-		if (!runner) {
-			return new Response("vite-plugin-workerd runner has not been initialized.", {
-				status: 503,
-			});
-		}
-
-		return dispatchRequest({
-			runner,
-			request,
-			env: this.env,
-			context: createRequestContext(this.ctx),
-		});
+		return new Response("vite-plugin-workerd runner does not handle this path.", { status: 404 });
 	}
 
 	async #initialize(): Promise<Response> {
-		await this.#runner?.close();
 		this.#webSocket?.close();
 		this.#closePendingWorkerCodeRequests(new Error("vite-plugin-workerd runner was reinitialized."));
 		invalidateWorkerCodeCache();
@@ -194,14 +168,21 @@ export class __VITE_RUNNER_OBJECT__ extends DurableObject<RunnerEnv> {
 		const client = pair[0];
 		const server = pair[1];
 		server.accept();
+		server.addEventListener("message", ({ data }) => {
+			const payload = JSON.parse(decodeWebSocketData(data));
+			this.#handleTransportPayload(payload);
+			this.#handleCustomPayload(payload);
+		});
+		server.addEventListener("close", () => {
+			if (this.#webSocket === server) {
+				this.#webSocket = undefined;
+				this.#closePendingWorkerCodeRequests(
+					new Error("vite-plugin-workerd runner lost its Vite transport."),
+				);
+			}
+		});
 
 		this.#webSocket = server;
-		this.#runner = createModuleRunner(
-			this.env,
-			server,
-			(payload) => this.#handleTransportPayload(payload),
-			(payload) => this.#handleCustomPayload(payload),
-		);
 
 		return new Response(null, {
 			status: 101,
@@ -247,19 +228,19 @@ export class __VITE_RUNNER_OBJECT__ extends DurableObject<RunnerEnv> {
 		}
 	}
 
-	#handleCustomPayload(payload: unknown): boolean {
+	#handleCustomPayload(payload: unknown): void {
 		if (isInvalidateWorkerCodePayload(payload)) {
 			invalidateWorkerCodeCache();
-			return true;
+			return;
 		}
 
 		if (!isResolveWorkerCodeResultPayload(payload)) {
-			return false;
+			return;
 		}
 
 		const pending = this.#pendingWorkerCodeRequests.get(payload.data.requestId);
 		if (!pending) {
-			return true;
+			return;
 		}
 
 		this.#pendingWorkerCodeRequests.delete(payload.data.requestId);
@@ -267,16 +248,15 @@ export class __VITE_RUNNER_OBJECT__ extends DurableObject<RunnerEnv> {
 
 		if (payload.data.error) {
 			pending.reject(new Error(payload.data.error));
-			return true;
+			return;
 		}
 
 		if (!payload.data.code) {
 			pending.reject(new Error("Vite returned a worker-code response without a payload."));
-			return true;
+			return;
 		}
 
 		pending.resolve(payload.data.code);
-		return true;
 	}
 
 	#closePendingWorkerCodeRequests(reason: Error): void {
@@ -286,128 +266,6 @@ export class __VITE_RUNNER_OBJECT__ extends DurableObject<RunnerEnv> {
 			pending.reject(reason);
 		}
 	}
-}
-
-/**
- * Creates the runtime-side Vite module runner used by the singleton Durable Object.
- */
-function createModuleRunner(
-	env: RunnerEnv,
-	webSocket: WebSocket,
-	onTransportPayload: (payload: unknown) => void,
-	onCustomPayload: (payload: unknown) => boolean,
-): ModuleRunner {
-	return new ModuleRunner(
-		{
-			hmr: true,
-			sourcemapInterceptor: "prepareStackTrace",
-			transport: {
-				connect({ onMessage }) {
-					webSocket.addEventListener("message", ({ data }) => {
-						const payload = JSON.parse(decodeWebSocketData(data));
-						onTransportPayload(payload);
-						if (onCustomPayload(payload)) {
-							return;
-						}
-
-						onMessage(payload);
-					});
-
-					onMessage({
-						type: "custom",
-						event: "vite:ws:connect",
-						data: { webSocket },
-					});
-				},
-				disconnect() {
-					webSocket.close();
-				},
-				send(data) {
-					webSocket.send(JSON.stringify(data));
-				},
-			},
-		},
-		{
-			async runInlinedModule(context, transformed, module) {
-				if (!env[UNSAFE_EVAL_BINDING]) {
-					throw new Error(`Expected ${JSON.stringify(UNSAFE_EVAL_BINDING)} to be defined for the control service.`);
-				}
-
-				const code = `"use strict";async (${Object.keys(context).join(",")})=>{${transformed}\n}`;
-				const fn = env[UNSAFE_EVAL_BINDING].eval(code, module.id);
-
-				await fn(...Object.values(context));
-				Object.seal(context[ssrModuleExportsKey]);
-			},
-			async runExternalModule(filepath) {
-				const externalModule = await import(filepath);
-
-				if (
-					filepath === "cloudflare:workers" &&
-					externalModule &&
-					typeof externalModule === "object" &&
-					"env" in externalModule
-				) {
-					const cloudflareWorkersModule = externalModule as Record<string, unknown> & {
-						env: Record<string, unknown>;
-					};
-
-					return Object.seal({
-						...cloudflareWorkersModule,
-						env: stripInternalEnv(cloudflareWorkersModule.env),
-					});
-				}
-
-				return externalModule;
-			},
-		},
-	);
-}
-
-/**
- * Dispatches a request to the current default export of the virtual worker entry.
- */
-async function dispatchRequest(options: {
-	runner: ModuleRunner;
-	request: Request;
-	env: RunnerEnv;
-	context: WorkerRequestContext;
-}): Promise<Response> {
-	const module = await options.runner.import<Record<string, unknown>>(VIRTUAL_WORKER_ENTRY);
-	const userEnv = stripInternalEnv(options.env);
-	const handler = module.default;
-
-	if (handler && typeof handler === "object") {
-		const maybeFetch = Reflect.get(handler, "fetch");
-		if (typeof maybeFetch !== "function") {
-			throw new TypeError(
-				`Expected ${JSON.stringify(VIRTUAL_WORKER_ENTRY)} to export a default handler with a fetch() method.`,
-			);
-		}
-
-		return await maybeFetch.call(handler, options.request, userEnv, options.context);
-	}
-
-	if (typeof handler === "function") {
-		const Handler = handler as new (
-			context: WorkerRequestContext,
-			env: Record<string, unknown>,
-		) => {
-			fetch?: (request: Request) => Promise<Response> | Response;
-		};
-		const instance = new Handler(options.context, userEnv);
-		if (typeof instance.fetch !== "function") {
-			throw new TypeError(
-				`Expected the default export of ${JSON.stringify(VIRTUAL_WORKER_ENTRY)} to define a fetch() method.`,
-			);
-		}
-
-		return await instance.fetch(options.request);
-	}
-
-	throw new TypeError(
-		`Expected ${JSON.stringify(VIRTUAL_WORKER_ENTRY)} to export a default handler object or class.`,
-	);
 }
 
 /**
@@ -421,7 +279,7 @@ async function fetchWorkerCodeFromRunner(
 	const workerCodeUrl = new URL(request.url);
 	workerCodeUrl.pathname = WORKER_CODE_PATH;
 	workerCodeUrl.search = "";
- 	workerCodeUrl.searchParams.set("service", serviceName);
+	workerCodeUrl.searchParams.set("service", serviceName);
 
 	const response = await forwardToControlServiceRequest(new Request(workerCodeUrl.toString()), env);
 	if (!response.ok) {
@@ -462,6 +320,7 @@ async function getHotWorkerEntrypoint(
 
 	return worker.getEntrypoint(entrypoint, entrypointOptions);
 }
+
 /**
  * Marks the shared active worker-code cache dirty.
  */
@@ -539,19 +398,6 @@ function stripInternalEnv(env: Record<string, unknown>): Record<string, unknown>
 	return Object.fromEntries(
 		Object.entries(env).filter(([name]) => !INTERNAL_BINDING_NAMES.has(name)),
 	);
-}
-
-/**
- * Creates the closest request-context shim we can provide from a Durable Object request.
- */
-function createRequestContext(state: DurableObjectState): WorkerRequestContext {
-	return {
-		props: undefined,
-		passThroughOnException() {},
-		waitUntil(promise) {
-			state.waitUntil?.(promise);
-		},
-	};
 }
 
 /**

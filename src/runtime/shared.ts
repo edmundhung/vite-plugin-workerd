@@ -6,10 +6,8 @@ export const WORKER_CODE_PATH = "/__vite_plugin_workerd_worker_code__";
 export const RUNNER_OBJECT_BINDING = "__VITE_RUNNER_OBJECT__";
 export const RUNNER_OBJECT_CLASS_NAME = "__VITE_RUNNER_OBJECT__";
 export const RUNNER_OBJECT_ID = "singleton";
-export const UNSAFE_EVAL_BINDING = "__VITE_UNSAFE_EVAL__";
 export const WORKER_LOADER_BINDING = "__VITE_WORKER_LOADER__";
 export const INVALIDATE_WORKER_CODE_EVENT = "vite-plugin-workerd:invalidate-worker-code";
-export const VIRTUAL_WORKER_ENTRY = "virtual:workerd/worker-entry";
 export const RESOLVE_WORKER_CODE_EVENT = "vite-plugin-workerd:resolve-worker-code";
 export const RESOLVE_WORKER_CODE_RESULT_EVENT = "vite-plugin-workerd:resolve-worker-code:result";
 
