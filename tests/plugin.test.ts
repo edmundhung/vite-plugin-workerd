@@ -9,7 +9,7 @@ import { createBuilder } from "vite";
 import { createWorker, defineConfig, embed, workerd } from "../src/index";
 
 const workerdBin = path.resolve(process.cwd(), "node_modules", ".bin", "workerd");
-const syntaxModulePath = JSON.stringify(path.resolve(process.cwd(), "src", "syntax.ts"));
+const syntaxModulePath = JSON.stringify(path.resolve(process.cwd(), "src", "config", "syntax.ts"));
 
 describe("workerd vite plugin", () => {
 	it("emits dist/workerd.capnp and runs it with workerd", async () => {

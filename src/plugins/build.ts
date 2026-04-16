@@ -3,14 +3,14 @@ import path from "node:path";
 
 import type { EnvironmentOptions, ViteBuilder } from "vite";
 
-import { embed, getEmbeddedPath, isEmbeddedPath } from "./syntax";
-import type { WorkerEsModule, WorkerdConfig, WorkerdService } from "./workerd";
+import { embed, getEmbeddedPath, isEmbeddedPath } from "../config/syntax";
+import type { WorkerEsModule, WorkerdConfig, WorkerdService } from "../config/workerd";
+import { WORKER_ENVIRONMENT_PREFIX, WORKER_EXTERNAL_IDS, createWorkerResolveOptions } from "./worker-environment";
 
-const WORKER_ENVIRONMENT_PREFIX = "workerd_";
-const WORKER_RESOLVE_CONDITIONS = ["workerd", "worker", "module", "browser"];
-const WORKER_BUILD_CONDITION = "production";
 const WORKER_OUTPUT_DIRECTORY = "workers";
 const WORKERD_CONFIG_NAME = "workerd.capnp";
+
+type WorkerWatchOptions = NonNullable<EnvironmentOptions["build"]>["watch"];
 
 export interface WorkerTarget {
 	environmentName: string;
@@ -35,6 +35,7 @@ export interface WorkerdBuildContext {
 export function createBuildContext(options: {
 	root: string;
 	outDir: string;
+	outputFileName?: string;
 	config: WorkerdConfig;
 }): WorkerdBuildContext {
 	const outDir = path.resolve(options.root, options.outDir);
@@ -70,7 +71,7 @@ export function createBuildContext(options: {
 
 	return {
 		config: options.config,
-		outputPath: path.join(outDir, WORKERD_CONFIG_NAME),
+		outputPath: path.join(outDir, options.outputFileName ?? WORKERD_CONFIG_NAME),
 		workerTargets,
 		bundledWorkerModulesByService: new Map(),
 	};
@@ -81,20 +82,22 @@ export function createBuildContext(options: {
  */
 export function createWorkerEnvironmentOptions(
 	target: WorkerTarget,
+	mode: "development" | "production" = "production",
+	watch: WorkerWatchOptions = null,
 ): EnvironmentOptions {
 	return {
-		resolve: {
-			noExternal: true,
-			conditions: [...WORKER_RESOLVE_CONDITIONS, WORKER_BUILD_CONDITION],
-		},
+		resolve: createWorkerResolveOptions(mode),
 		build: {
 			ssr: true,
 			target: "esnext",
+			sourcemap: mode === "development",
 			emptyOutDir: false,
 			copyPublicDir: false,
+			watch,
 			outDir: target.outputDirectory,
 			rollupOptions: {
 				input: target.entryPath,
+				external: [...WORKER_EXTERNAL_IDS],
 				preserveEntrySignatures: "strict",
 				output: {
 					format: "es",
@@ -130,17 +133,20 @@ export function createBuildApp(context: WorkerdBuildContext): (builder: ViteBuil
 }
 
 /**
- * Replaces source-backed worker modules with the modules emitted by the worker build.
+ * Replaces source-backed worker modules with a provided set of bundled worker modules.
  */
-export function rewriteConfigForBundledWorkers(context: WorkerdBuildContext): WorkerdConfig {
+export function rewriteConfigWithBundledWorkerModules(
+	config: WorkerdConfig,
+	bundledWorkerModulesByService: Map<string, WorkerEsModule[]>,
+): WorkerdConfig {
 	return {
-		...context.config,
-		services: context.config.services.map((service) => {
+		...config,
+		services: config.services.map((service) => {
 			if (!isWorkerService(service)) {
 				return service;
 			}
 
-			const bundledModules = context.bundledWorkerModulesByService.get(service.name);
+			const bundledModules = bundledWorkerModulesByService.get(service.name);
 			if (!bundledModules) {
 				throw new Error(`Expected bundled worker modules for service \`${service.name}\`.`);
 			}
@@ -173,7 +179,7 @@ export function writeSerializedConfig(options: {
 function getMainModule(
 	serviceName: string,
 	modules: WorkerEsModule[] | undefined,
-): WorkerEsModule {
+): WorkerEsModule & { esModule: ReturnType<typeof embed> } {
 	if (!modules || modules.length === 0) {
 		throw new Error(
 			`workerd worker service \`${serviceName}\` must define a source-backed \`main\` module for vite build.`,
@@ -194,7 +200,7 @@ function getMainModule(
 		);
 	}
 
-	return mainModule;
+	return mainModule as WorkerEsModule & { esModule: ReturnType<typeof embed> };
 }
 
 /**

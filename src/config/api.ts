@@ -22,7 +22,7 @@ import type {
 	WorkerOptions,
 	ResolutionContext,
 	RuntimeExportAccessorMap,
-} from "./types";
+} from "../plugins/types";
 import type {
 	DurableObjectNamespaceConfig,
 	DurableObjectStorageConfig,

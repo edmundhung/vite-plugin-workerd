@@ -6,7 +6,7 @@ import type {
 	WorkerdConfig,
 	WorkerdService,
 	WorkerdSocket,
-} from "./workerd";
+} from "../config/workerd";
 
 export type Json =
 	| null
@@ -173,11 +173,13 @@ export interface DefineConfigInput {
 }
 
 export interface WorkerdPluginFileOptions {
+	defaultSocket?: string;
 	configFile?: string;
 	config?: never;
 }
 
 export interface WorkerdPluginInlineOptions {
+	defaultSocket?: string;
 	config:
 		| WorkerdConfig
 		| (() => WorkerdConfig | Promise<WorkerdConfig>);

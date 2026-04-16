@@ -7,6 +7,7 @@ type CapnpScalar = null | boolean | number | string;
 type CapnpNode = CapnpScalar | CapnpList | CapnpStruct | CapnpEmbed | CapnpReference;
 
 const INDENT = "  ";
+const VOID_FIELD_NAMES = new Set(["ephemeralLocal", "inMemory", "unsafeEval"]);
 
 interface CapnpList extends Array<CapnpNode> {}
 
@@ -164,7 +165,10 @@ function normalizeNode(
 			continue;
 		}
 
-		const normalizedValue = normalizeNode(nestedValue, context);
+		const normalizedValue = normalizeNode(
+			nestedValue === true && VOID_FIELD_NAMES.has(key) ? null : nestedValue,
+			context,
+		);
 		if (Array.isArray(normalizedValue) && normalizedValue.length === 0) {
 			continue;
 		}

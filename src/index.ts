@@ -6,13 +6,13 @@ export {
 	defineConfig,
 	durableObject,
 	workerEntrypoint,
-} from "./api";
-export { workerd } from "./plugin";
-export { embed } from "./syntax";
-export type { EmbeddedPath } from "./syntax";
+} from "./config/api";
+export { workerd } from "./plugins/plugin";
+export { embed } from "./config/syntax";
+export type { EmbeddedPath } from "./config/syntax";
 export type {
 	WorkerdConfig,
-} from "./workerd";
+} from "./config/workerd";
 export type {
 	WorkerdPluginOptions,
-} from "./types";
+} from "./plugins/types";

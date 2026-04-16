@@ -3,9 +3,9 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { createDisk, createWorker, defineConfig, durableObject, embed } from "../src/index";
-import { getEmbeddedPath, isEmbeddedPath } from "../src/syntax";
-import { prepareConfigForSerialization, serializeConfig } from "../src/serialize";
-import type { WorkerdConfig } from "../src/workerd";
+import { getEmbeddedPath, isEmbeddedPath } from "../src/config/syntax";
+import { prepareConfigForSerialization, serializeConfig } from "../src/config/serialize";
+import type { WorkerdConfig } from "../src/config/workerd";
 
 describe("serializeConfig", () => {
 	it("emits workerd text config with embedded source paths", () => {

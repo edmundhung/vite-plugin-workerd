@@ -18,7 +18,7 @@ export type ServiceReferenceConfig = string | ServiceDesignator;
 
 export interface WorkerEsModule {
 	name: string;
-	esModule: EmbeddedPath;
+	esModule: EmbeddedPath | string;
 }
 
 export interface DurableObjectNamespaceDesignator {
@@ -40,7 +40,17 @@ export type WorkerBinding =
 	  }
 	| {
 			name: string;
+			workerLoader: {
+				id?: string;
+			};
+	  }
+	| {
+			name: string;
 			durableObjectNamespace: string | DurableObjectNamespaceDesignator;
+	  }
+	| {
+			name: string;
+			unsafeEval: true;
 	  };
 
 export type DurableObjectStorageConfig = { inMemory: true } | { localDisk: string };

@@ -1,130 +1,39 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { loadConfigFromFile, type ConfigEnv, type Plugin } from "vite";
+import { loadConfigFromFile, type ConfigEnv } from "vite";
 
-import {
-	createBuildApp,
-	createBuildContext,
-	createWorkerEnvironmentOptions,
-	rewriteConfigForBundledWorkers,
-	type WorkerdBuildContext,
-	writeSerializedConfig,
-} from "./build";
 import { embed, getEmbeddedPath, isEmbeddedPath } from "./syntax";
-import { prepareConfigForSerialization, serializeConfig } from "./serialize";
-import type { WorkerdPluginOptions } from "./types";
+import type { WorkerdPluginOptions } from "../plugins/types";
 import type { WorkerdConfig } from "./workerd";
 
 const DEFAULT_CONFIG_BASENAME = "workerd.config";
 const DEFAULT_WORKERD_CONFIG_EXTENSIONS = [".ts", ".mts", ".cts", ".js", ".mjs", ".cjs"] as const;
 
-/**
- * Creates the Vite plugin that bundles worker services and emits `workerd.capnp`.
- */
-export function workerd(options: WorkerdPluginOptions = {}): Plugin {
-	let buildContext!: WorkerdBuildContext;
-
-	return {
-		name: "vite-plugin-workerd",
-		apply: "build",
-		sharedDuringBuild: true,
-		async config(userConfig, env) {
-			const root = resolveConfigRoot(userConfig);
-			const config = await loadWorkerdConfig(options, root, env);
-			const outDir = userConfig.build?.outDir ?? "dist";
-			const existingBuildApp = userConfig.builder?.buildApp;
-
-			buildContext = createBuildContext({
-				root,
-				outDir,
-				config,
-			});
-
-			return {
-				appType: "custom",
-				environments: Object.fromEntries(
-					buildContext.workerTargets.map((target) => [
-						target.environmentName,
-						createWorkerEnvironmentOptions(target),
-					]),
-				),
-				builder: {
-					async buildApp(builder) {
-						if (existingBuildApp) {
-							await existingBuildApp(builder);
-						}
-
-						return createBuildApp(buildContext)(builder);
-					},
-				},
-			};
-		},
-		generateBundle(_, bundle) {
-			const target = buildContext.workerTargets.find(
-				(target) => target.environmentName === this.environment.name,
-			);
-			if (!target) {
-				return;
-			}
-
-			const modules = [];
-
-			for (const output of Object.values(bundle)) {
-				if (output.type !== "chunk") {
-					continue;
-				}
-
-				modules.push({
-					name: output.isEntry ? "main" : `./${output.fileName}`,
-					esModule: embed(path.join(target.outputDirectory, output.fileName)),
-				});
-			}
-
-			if (modules.length === 0) {
-				throw new Error(
-					`Expected worker build to emit at least one JavaScript chunk for service \`${target.serviceName}\`.`,
-				);
-			}
-
-			buildContext.bundledWorkerModulesByService.set(
-				target.serviceName,
-				modules,
-			);
-		},
-		buildApp: {
-			order: "post",
-			async handler() {
-				const bundledConfig = rewriteConfigForBundledWorkers(buildContext);
-				const model = prepareConfigForSerialization(bundledConfig, {
-					outputPath: buildContext.outputPath,
-				});
-				const source = serializeConfig(model);
-
-				writeSerializedConfig({
-					outputPath: buildContext.outputPath,
-					source,
-				});
-			},
-		},
-	};
+export interface LoadedWorkerdConfig {
+	config: WorkerdConfig;
+	path?: string;
+	dependencies: string[];
 }
 
 /**
  * Loads the workerd config from inline options or the default config file on disk.
  */
-async function loadWorkerdConfig(
+export async function loadWorkerdConfig(
 	options: WorkerdPluginOptions,
 	root: string,
 	env: ConfigEnv,
-): Promise<WorkerdConfig> {
+): Promise<LoadedWorkerdConfig> {
 	if (options.config !== undefined) {
 		const resolvedConfig =
 			typeof options.config === "function"
 				? await options.config()
 				: options.config;
 
-		return parseWorkerdConfig(resolvedConfig, root);
+		return {
+			config: parseWorkerdConfig(resolvedConfig, root),
+			dependencies: [],
+		};
 	}
 
 	const configFile = options.configFile ?? findDefaultConfigFile(root);
@@ -142,13 +51,17 @@ async function loadWorkerdConfig(
 		throw new Error(`Could not load ${configFile}.`);
 	}
 
-	return parseWorkerdConfig(loaded.config, path.dirname(loaded.path));
+	return {
+		config: parseWorkerdConfig(loaded.config, path.dirname(loaded.path)),
+		path: loaded.path,
+		dependencies: [...new Set([loaded.path, ...loaded.dependencies])],
+	};
 }
 
 /**
  * Validates a loaded config object and resolves embedded paths against a base directory.
  */
-function parseWorkerdConfig(config: unknown, baseDirectory: string): WorkerdConfig {
+export function parseWorkerdConfig(config: unknown, baseDirectory: string): WorkerdConfig {
 	if (!isPlainObject(config)) {
 		throw new Error("workerd config must export an object.");
 	}
@@ -175,10 +88,22 @@ function parseWorkerdConfig(config: unknown, baseDirectory: string): WorkerdConf
 		serviceNames.add(service.name);
 	}
 
+	const socketNames = new Set<string>();
+
 	for (const [index, socket] of config.sockets.entries()) {
 		if (!isPlainObject(socket)) {
 			throw new Error(`workerd config socket at index ${index} must be an object.`);
 		}
+
+		if (typeof socket.name !== "string") {
+			throw new Error(`workerd config socket at index ${index} must include a string \`name\`.`);
+		}
+
+		if (socketNames.has(socket.name)) {
+			throw new Error(`workerd config must not contain duplicate socket names: \`${socket.name}\`.`);
+		}
+
+		socketNames.add(socket.name);
 	}
 
 	return normalizeEmbeddedPaths({
@@ -186,6 +111,22 @@ function parseWorkerdConfig(config: unknown, baseDirectory: string): WorkerdConf
 		services: config.services,
 		sockets: config.sockets,
 	}, baseDirectory);
+}
+
+/**
+ * Resolves the base directory used for default workerd config discovery.
+ * Vite passes `configFile` into `config()` at runtime even though `UserConfig` doesn't type it.
+ */
+export function resolveConfigRoot(userConfig: { root?: string; configFile?: string | false }): string {
+	const baseDirectory = typeof userConfig.configFile === "string"
+		? path.dirname(userConfig.configFile)
+		: process.cwd();
+
+	if (typeof userConfig.root === "string") {
+		return path.resolve(baseDirectory, userConfig.root);
+	}
+
+	return baseDirectory;
 }
 
 /**
@@ -226,21 +167,6 @@ function normalizeEmbeddedPaths<Value>(value: Value, baseDirectory: string): Val
 	}
 
 	return value;
-}
-/**
- * Resolves the base directory used for default workerd config discovery.
- * Vite passes `configFile` into `config()` at runtime even though `UserConfig` doesn't type it.
- */
-function resolveConfigRoot(userConfig: { root?: string; configFile?: string | false }): string {
-	const baseDirectory = typeof userConfig.configFile === "string"
-		? path.dirname(userConfig.configFile)
-		: process.cwd();
-
-	if (typeof userConfig.root === "string") {
-		return path.resolve(baseDirectory, userConfig.root);
-	}
-
-	return baseDirectory;
 }
 
 /**

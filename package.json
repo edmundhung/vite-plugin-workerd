@@ -47,11 +47,12 @@
     "vite": "^7.0.0 || ^8.0.0"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "4.20260415.1",
     "@types/node": "^24.6.1",
     "tsdown": "^0.20.3",
     "typescript": "^5.9.3",
     "vite": "^7.1.12",
     "vitest": "^3.2.4",
-    "workerd": "^1.20260410.1"
+    "workerd": "^1.20260415.1"
   }
 }

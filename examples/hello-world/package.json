@@ -6,6 +6,7 @@
     "prebuild": "pnpm --dir ../.. build",
     "prestart": "pnpm build",
     "start": "workerd serve dist/workerd.capnp",
+    "dev": "vite dev",
     "build": "vite build",
     "test:runner": "vitest run",
     "test": "WORKERD_PORT=8788 start-server-and-test start tcp:127.0.0.1:8788 test:runner"
