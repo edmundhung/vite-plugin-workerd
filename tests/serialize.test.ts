@@ -11,7 +11,8 @@ describe("serializeConfig", () => {
 	it("emits workerd text config with embedded source paths", () => {
 		const root = "/virtual/project";
 		const storage = createDisk({ path: "./.data/do", writable: true });
-		const app = createWorker("./src/index.ts", {
+		const app = createWorker({
+			entry: path.join(root, "src", "index.ts"),
 			compatibilityDate: "2025-08-01",
 			durableObjectStorage: { disk: storage },
 			exports: {

@@ -1,6 +1,7 @@
 import { createWorker, defineConfig } from "vite-plugin-workerd";
 
-const app = createWorker("./src/index.ts", {
+const app = createWorker({
+	entry: new URL("./src/index.ts", import.meta.url),
 	compatibilityDate: "2025-08-01",
 });
 

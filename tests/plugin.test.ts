@@ -336,7 +336,8 @@ describe("workerd vite plugin", () => {
 
 	it("uses the generated service name for helper-authored worker output", async () => {
 		const root = createTempProjectRoot();
-		const app = createWorker("./src/index.ts", {
+		const app = createWorker({
+			entry: path.join(root, "src", "index.ts"),
 			compatibilityDate: "2025-08-01",
 		});
 

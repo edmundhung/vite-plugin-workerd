@@ -1,10 +1,14 @@
 import { satisfies, validRange } from "semver";
 
 export default {
-	async fetch(request: Request) {
+	async fetch(request: Request, env: { GREET: any }) {
 		const url = new URL(request.url);
 		const packageName = decodeURIComponent(url.pathname.slice(1));
 		const range = url.searchParams.get("satisfies");
+
+		if (packageName === "greet") {
+			return env.GREET.fetch(request);
+		}
 
 		if (!packageName) {
 			return new Response(

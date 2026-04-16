@@ -76,6 +76,8 @@ export type BindingTarget =
 	| WorkerReference
 	| DurableObjectReference;
 
+export type WorkerEntryInput = string | URL;
+
 export type WorkerOptions<Exports extends WorkerExports = any> = {
 	compatibilityDate?: string;
 	compatibilityFlags?: string[];
@@ -86,6 +88,10 @@ export type WorkerOptions<Exports extends WorkerExports = any> = {
 	cacheApiOutbound?: Exclude<BindingTarget, DurableObjectReference>;
 	tails?: WorkerDefinition[];
 	streamingTails?: WorkerDefinition[];
+};
+
+export type CreateWorkerOptions<Exports extends WorkerExports = any> = WorkerOptions<Exports> & {
+	entry: WorkerEntryInput;
 };
 
 export interface ListenOptions {
@@ -99,17 +105,28 @@ export interface ListenOptions {
 	};
 }
 
-export type ExportAccessors<Exports extends WorkerExports> = {
-	[K in keyof Exports]: Exports[K] extends WorkerEntrypointExport<infer Props>
-		? [Props] extends [never]
-			? () => WorkerReference
-			: IsExactlyWorkerProps<Props> extends true
-				? (options?: WorkerReferenceOptions) => WorkerReference
-				: (options: { props: Props }) => WorkerReference
-		: Exports[K] extends DurableObjectExport
+export type WorkerEntrypointAccessor<Props extends WorkerProps = WorkerProps> =
+	[Props] extends [never]
+		? () => WorkerReference
+		: IsExactlyWorkerProps<Props> extends true
+			? (options?: WorkerReferenceOptions) => WorkerReference
+			: (options: { props: Props }) => WorkerReference;
+
+type ExportAccessor<Export extends WorkerExport> =
+	Export extends WorkerEntrypointExport<infer Props>
+		? WorkerEntrypointAccessor<Props>
+		: Export extends DurableObjectExport
 			? () => DurableObjectReference
 			: never;
-};
+
+type ImplicitDefaultExportAccessor<Exports extends WorkerExports> =
+	"default" extends keyof Exports
+		? {}
+		: { default: WorkerEntrypointAccessor };
+
+export type ExportAccessors<Exports extends WorkerExports> = {
+	[K in keyof Exports]: ExportAccessor<Exports[K]>;
+} & ImplicitDefaultExportAccessor<Exports>;
 
 export type RuntimeExportAccessor =
 	| ((options?: WorkerReferenceOptions) => WorkerReference)

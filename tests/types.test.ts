@@ -3,7 +3,8 @@ import { expectTypeOf, it } from "vitest";
 import { createWorker, workerEntrypoint } from "../src/index";
 
 it("types worker entrypoint accessors", () => {
-	const app = createWorker("./src/index.ts", {
+	const app = createWorker({
+		entry: new URL("./src/index.ts", import.meta.url),
 		compatibilityDate: "2025-08-01",
 		exports: {
 			default: workerEntrypoint(),
@@ -40,5 +41,26 @@ it("types worker entrypoint accessors", () => {
 	app.exports.Named({
 		// @ts-expect-error named entrypoint props should still be type-checked
 		props: {},
+	});
+});
+
+it("types the implicit default worker accessor", () => {
+	const app = createWorker({
+		entry: new URL("./src/index.ts", import.meta.url),
+		compatibilityDate: "2025-08-01",
+	});
+
+	expectTypeOf(app.exports.default).toBeCallableWith();
+	expectTypeOf(app.exports.default).toBeCallableWith({
+		props: {
+			issuer: "https://issuer.example",
+		},
+	});
+
+	app.exports.default();
+	app.exports.default({
+		props: {
+			issuer: "https://issuer.example",
+		},
 	});
 });

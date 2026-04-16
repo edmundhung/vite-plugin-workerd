@@ -1,5 +1,9 @@
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
 import type {
 	BindingTarget,
+	CreateWorkerOptions,
 	DefineConfigInput,
 	DiskDefinition,
 	DurableObjectExport,
@@ -16,6 +20,7 @@ import type {
 	WorkerReference,
 	WorkerReferenceOptions,
 	WorkerDefinition,
+	WorkerEntryInput,
 	WorkerEntrypointExport,
 	WorkerExport,
 	WorkerExports,
@@ -63,17 +68,19 @@ export function durableObject(options: DurableObjectOptions = {}): DurableObject
 
 /**
  * Creates a worker definition with export accessors and socket helpers.
+ * Helper-defined worker entries must be absolute paths or file URLs.
  */
 export function createWorker<Exports extends WorkerExports = {}>(
-	entry: string,
-	options?: WorkerOptions<Exports>,
+	options: CreateWorkerOptions<Exports>,
 ): WorkerDefinition<Exports> {
-	const normalizedOptions: WorkerOptions<Exports> = options ?? {};
+	const { entry, ...workerOptions } = options;
+	const normalizedOptions: WorkerOptions<Exports> = workerOptions;
 	const mutableAccessors: RuntimeExportAccessorMap = {};
+	const entryPath = resolveWorkerEntry(entry);
 
 	const worker: WorkerDefinition<Exports> = {
 		kind: "worker-definition",
-		entry,
+		entry: entryPath,
 		options: normalizedOptions,
 		exports: mutableAccessors as ExportAccessors<Exports>,
 		listen(socketOptions: ListenOptions): SocketDefinition {
@@ -84,21 +91,32 @@ export function createWorker<Exports extends WorkerExports = {}>(
 			};
 		},
 	};
+	const createWorkerEntrypointAccessor = (
+		entrypoint: string | undefined,
+	): ((accessorOptions?: WorkerReferenceOptions) => WorkerReference) => {
+		return function workerEntrypointAccessor(
+			accessorOptions?: WorkerReferenceOptions,
+		): WorkerReference {
+			return {
+				kind: "service-reference",
+				service: worker,
+				entrypoint,
+				props: accessorOptions?.props,
+			};
+		};
+	};
+
+	if (!("default" in (normalizedOptions.exports ?? {}))) {
+		mutableAccessors.default = createWorkerEntrypointAccessor(undefined);
+	}
 
 	for (const [exportName, exportDefinition] of Object.entries(
 		normalizedOptions.exports ?? {},
 	)) {
 		if (exportDefinition.kind === "workerEntrypoint") {
-			mutableAccessors[exportName] = function workerEntrypointAccessor(
-				accessorOptions?: WorkerReferenceOptions,
-			): WorkerReference {
-				return {
-					kind: "service-reference",
-					service: worker,
-					entrypoint: exportName === "default" ? undefined : exportName,
-					props: accessorOptions?.props,
-				};
-			};
+			mutableAccessors[exportName] = createWorkerEntrypointAccessor(
+				exportName === "default" ? undefined : exportName,
+			);
 			continue;
 		}
 
@@ -112,6 +130,29 @@ export function createWorker<Exports extends WorkerExports = {}>(
 	}
 
 	return worker;
+}
+
+/**
+ * Normalizes helper-defined worker entries to absolute filesystem paths.
+ */
+function resolveWorkerEntry(entry: WorkerEntryInput): string {
+	if (entry instanceof URL) {
+		if (entry.protocol !== "file:") {
+			throw new Error(
+				`createWorker() only accepts file URLs. Received ${JSON.stringify(entry.href)}.`,
+			);
+		}
+
+		return fileURLToPath(entry);
+	}
+
+	if (path.isAbsolute(entry)) {
+		return entry;
+	}
+
+	throw new Error(
+		`createWorker() entry must be an absolute path or file URL. Use new URL(${JSON.stringify(entry)}, import.meta.url) instead of a relative string.`,
+	);
 }
 
 /**

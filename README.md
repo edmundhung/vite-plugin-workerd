@@ -19,14 +19,16 @@ import {
 	workerEntrypoint,
 } from "vite-plugin-workerd";
 
-const api = createWorker("./src/auth.js", {
+const api = createWorker({
+	entry: new URL("./src/auth.js", import.meta.url),
 	compatibilityDate: "2026-01-01",
 	exports: {
 		Auth: workerEntrypoint<{ baseURL: string }>(),
 	},
 });
 
-const app = createWorker("./src/api.js", {
+const app = createWorker({
+	entry: new URL("./src/api.js", import.meta.url),
 	compatibilityDate: "2026-01-01",
 	bindings: {
 		AUTH: api.exports.Auth({
@@ -45,6 +47,8 @@ export default defineConfig({
 	],
 });
 ```
+
+Use `entry: new URL("./worker.ts", import.meta.url)` or an absolute path when calling `createWorker()`. Relative string entries are rejected so helper-defined workers stay anchored to the module that declared them.
 
 `vite.config.ts`
 
