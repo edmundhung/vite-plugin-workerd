@@ -17,6 +17,7 @@ import type {
 	NetworkDefinition,
 	SocketDefinition,
 	SocketInput,
+	WorkerBindings,
 	WorkerReference,
 	WorkerReferenceOptions,
 	WorkerDefinition,
@@ -46,14 +47,29 @@ import { embed } from "./syntax";
 /**
  * Marks a worker export as an entrypoint accessor.
  */
-export function workerEntrypoint<Props extends WorkerProps = WorkerProps>(): WorkerEntrypointExport<Props> {
-	return { kind: "workerEntrypoint" };
+type NormalizedWorkerEntrypointExport<EntrypointOrProps, Props extends WorkerProps> =
+	[EntrypointOrProps] extends [undefined]
+		? WorkerEntrypointExport<undefined, Props>
+		: EntrypointOrProps extends WorkerProps
+			? WorkerEntrypointExport<undefined, EntrypointOrProps>
+			: WorkerEntrypointExport<EntrypointOrProps, Props>;
+
+export function workerEntrypoint<
+	EntrypointOrProps = undefined,
+	Props extends WorkerProps = WorkerProps,
+>(): NormalizedWorkerEntrypointExport<EntrypointOrProps, Props> {
+	return { kind: "workerEntrypoint" } as NormalizedWorkerEntrypointExport<
+		EntrypointOrProps,
+		Props
+	>;
 }
 
 /**
  * Marks a worker export as a Durable Object and validates mutually exclusive options.
  */
-export function durableObject(options: DurableObjectOptions = {}): DurableObjectExport {
+export function durableObject<DurableObject = undefined>(
+	options: DurableObjectOptions = {},
+): DurableObjectExport<DurableObject> {
 	if (options.ephemeralLocal && options.uniqueKey) {
 		throw new Error(
 			"Durable Object exports cannot set both `ephemeralLocal` and `uniqueKey`.",
@@ -70,15 +86,18 @@ export function durableObject(options: DurableObjectOptions = {}): DurableObject
  * Creates a worker definition with export accessors and socket helpers.
  * Helper-defined worker entries must be absolute paths or file URLs.
  */
-export function createWorker<Exports extends WorkerExports = {}>(
-	options: CreateWorkerOptions<Exports>,
-): WorkerDefinition<Exports> {
+export function createWorker<
+	Exports extends WorkerExports = {},
+	Bindings extends WorkerBindings = {},
+>(
+	options: CreateWorkerOptions<Exports, Bindings>,
+): WorkerDefinition<Exports, Bindings> {
 	const { entry, ...workerOptions } = options;
-	const normalizedOptions: WorkerOptions<Exports> = workerOptions;
+	const normalizedOptions: WorkerOptions<Exports, Bindings> = workerOptions;
 	const mutableAccessors: RuntimeExportAccessorMap = {};
 	const entryPath = resolveWorkerEntry(entry);
 
-	const worker: WorkerDefinition<Exports> = {
+	const worker: WorkerDefinition<Exports, Bindings> = {
 		kind: "worker-definition",
 		entry: entryPath,
 		options: normalizedOptions,

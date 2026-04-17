@@ -1,6 +1,11 @@
 import { expectTypeOf, it } from "vitest";
 
-import { createWorker, workerEntrypoint } from "../src/index";
+import type appConfig from "./fixtures/infer-env/app";
+import type { bindings as appBindings, Env as FixtureEnv } from "./fixtures/infer-env/app";
+import type greetWorker from "./fixtures/infer-env/greet/worker";
+import appWorker from "./fixtures/infer-env/app/worker";
+
+import { createWorker, type InferEnv, workerEntrypoint } from "../src/index";
 
 it("types worker entrypoint accessors", () => {
 	const app = createWorker({
@@ -63,4 +68,17 @@ it("types the implicit default worker accessor", () => {
 			issuer: "https://issuer.example",
 		},
 	});
+});
+
+it("infers env bindings from worker definitions", () => {
+	type AppEnvFromConfig = InferEnv<typeof appConfig>;
+	type AppEnvFromBindings = InferEnv<typeof appBindings>;
+
+	expectTypeOf<Parameters<typeof appWorker.fetch>[1]>().toEqualTypeOf<FixtureEnv>();
+	expectTypeOf<Parameters<typeof appWorker.fetch>[1]>().toEqualTypeOf<AppEnvFromBindings>();
+	expectTypeOf<Parameters<typeof appWorker.fetch>[1]>().toEqualTypeOf<AppEnvFromConfig>();
+	expectTypeOf<FixtureEnv["GREET"]>().toEqualTypeOf<Service<typeof greetWorker>>();
+	expectTypeOf<FixtureEnv["GREET"]["fetch"]>().toBeCallableWith(new Request("http://example.com"));
+	expectTypeOf<FixtureEnv["GREET"]["greet"]>().toBeCallableWith("Ada");
+	expectTypeOf<FixtureEnv["GREET"]["greet"]>().returns.toEqualTypeOf<Promise<string>>();
 });

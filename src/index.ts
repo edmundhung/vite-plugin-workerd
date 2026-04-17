@@ -15,4 +15,5 @@ export type {
 } from "./config/workerd";
 export type {
 	WorkerdPluginOptions,
+	InferEnv,
 } from "./plugins/types";

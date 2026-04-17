@@ -68,6 +68,12 @@ npx vite build
 workerd serve dist/workerd.capnp
 ```
 
+## Examples
+
+- `examples/hello-world`: the smallest single-worker example
+- `examples/bundling`: a single worker that imports and uses an npm dependency
+- `examples/multi-workers`: a larger setup with multiple workers, bindings, typed RPC, and split TypeScript configs
+
 Example output:
 
 ```capnp

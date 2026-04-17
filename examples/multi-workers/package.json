@@ -1,0 +1,23 @@
+{
+  "name": "multi-workers-example",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "prebuild": "pnpm --dir ../.. build",
+    "prestart": "pnpm build",
+    "start": "workerd serve dist/workerd.capnp",
+    "dev": "vite dev",
+    "build": "vite build",
+    "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.worker.json --noEmit",
+    "test:runner": "vitest run",
+		"test": "WORKERD_PORT=48790 start-server-and-test start tcp:127.0.0.1:48790 test:runner"
+	},
+	"devDependencies": {
+		"@cloudflare/workers-types": "^4.20260415.1",
+		"start-server-and-test": "^2.1.5",
+		"vite": "^7.1.12",
+    "vite-plugin-workerd": "workspace:*",
+    "vitest": "^3.2.4",
+    "workerd": "^1.20260410.1"
+  }
+}

@@ -1,5 +1,5 @@
 {
-	"name": "hello-world-example",
+	"name": "bundling-example",
 	"private": true,
 	"type": "module",
 	"scripts": {
@@ -10,10 +10,14 @@
 		"build": "vite build",
 		"typecheck": "tsc -p tsconfig.json --noEmit",
 		"test:runner": "vitest run",
-		"test": "WORKERD_PORT=48788 start-server-and-test start tcp:127.0.0.1:48788 test:runner"
+		"test": "WORKERD_PORT=48789 start-server-and-test start tcp:127.0.0.1:48789 test:runner"
+	},
+	"dependencies": {
+		"semver": "^7.7.2"
 	},
 	"devDependencies": {
 		"@cloudflare/workers-types": "^4.20260415.1",
+		"@types/semver": "^7.7.0",
 		"start-server-and-test": "^2.1.5",
 		"vite": "^7.1.12",
 		"vite-plugin-workerd": "workspace:*",
