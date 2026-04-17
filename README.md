@@ -5,12 +5,12 @@ A Vite plugin for authoring and building workerd config
 ## Install
 
 ```bash
-npm install vite-plugin-workerd --save-dev
+npm install --save-dev vite-plugin-workerd workerd @cloudflare/workers-types
 ```
 
 ## Get Started
 
-Start by creating a `workerd.config.ts` file. This is the config the Vite plugin will use to build and run your workers, and it is meant to closely resemble a normal `workerd` config. `defineConfig()` returns that config shape, while helpers like `createWorker()` make it easier to author with type safety and better inference.
+To start, add a `workerd.config.ts` file in the project root. This is where you define your workers and the sockets that expose them. You can think of this file as a JS representation of a `workerd` config. Helpers like `createWorker()` make individual pieces easier to author, and `defineConfig()` combines them into the final config object.
 
 ```ts
 import {
@@ -19,7 +19,7 @@ import {
 } from "vite-plugin-workerd";
 
 const app = createWorker({
-	entry: new URL("./src/app.js", import.meta.url),
+	entry: new URL("./src/app.ts", import.meta.url),
 	compatibilityDate: "2026-01-01",
 });
 
@@ -101,6 +101,6 @@ This starts Vite in front of a real `workerd` process and proxies requests to it
 
 You can find more examples in the [examples](./examples) directory:
 
-- [Hello World](./examples/hello-world): one worker with a single `fetch()` handler.
+- [Hello World](./examples/hello-world): one worker written in TypeScript with a simple `fetch()` handler.
 - [Bundling](./examples/bundling): shows how npm dependencies and dynamic imports `await import(...)` are bundled in the build output.
-- [Multi Workers](./examples/multi-workers): demonstrate multiple workers, JSRPC with type inference.
+- [Multi Workers](./examples/multi-workers): multiple workers, service bindings, and typed RPC.
