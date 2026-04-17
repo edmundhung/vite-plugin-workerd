@@ -97,6 +97,36 @@ vite dev
 
 This starts Vite in front of a real `workerd` process and proxies requests to it, so normal edits hot reload without manually restarting `workerd`.
 
+## Status
+
+> [!caution]
+> This plugin is in early development and the API is likely to change.
+
+Config authoring:
+
+- [x] Author `workerd` config in JS/TS (`workerd.config.{js,ts}`)
+- [x] Type-safe service bindings and props
+- [x] Env inference from bindings
+- [ ] Support modules other than ES modules
+- [ ] `workerd.capnp` as an input format
+
+Build (`vite build`):
+
+- [x] Generate `workerd.capnp` and bundled worker chunks
+- [x] Bundle npm dependencies and lazy-loaded `import()` chunks
+- [x] Multi-worker builds
+- [ ] Example Docker image
+
+Dev (`vite dev`):
+
+- [x] Multi-worker apps
+- [x] Support `ctx.exports`
+- [x] Hot reload for worker code changes
+- [ ] Durable Objects
+- [ ] WebSockets Connections
+- [ ] Restart workerd on service graph changes
+- [ ] Broader framework and Vite plugin compatibility
+
 ## Examples
 
 You can find more examples in the [examples](./examples) directory:
