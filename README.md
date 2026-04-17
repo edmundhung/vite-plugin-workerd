@@ -8,33 +8,19 @@ A Vite plugin for authoring and building workerd config
 npm install vite-plugin-workerd --save-dev
 ```
 
-## Usage
+## Get Started
 
-`workerd.config.ts`
+Start by creating a `workerd.config.ts` file. This is the config the Vite plugin will use to build and run your workers, and it is meant to closely resemble a normal `workerd` config. `defineConfig()` returns that config shape, while helpers like `createWorker()` make it easier to author with type safety and better inference.
 
 ```ts
 import {
 	createWorker,
 	defineConfig,
-	workerEntrypoint,
 } from "vite-plugin-workerd";
 
-const api = createWorker({
-	entry: new URL("./src/auth.js", import.meta.url),
-	compatibilityDate: "2026-01-01",
-	exports: {
-		Auth: workerEntrypoint<{ baseURL: string }>(),
-	},
-});
-
 const app = createWorker({
-	entry: new URL("./src/api.js", import.meta.url),
+	entry: new URL("./src/app.js", import.meta.url),
 	compatibilityDate: "2026-01-01",
-	bindings: {
-		AUTH: api.exports.Auth({
-			props: { baseURL: "https://example.com" },
-		}),
-	},
 });
 
 export default defineConfig({
@@ -48,7 +34,7 @@ export default defineConfig({
 });
 ```
 
-Use `entry: new URL("./worker.ts", import.meta.url)` or an absolute path when calling `createWorker()`. Relative string entries are rejected so helper-defined workers stay anchored to the module that declared them.
+Next, add the `workerd` plugin to your Vite config. By default it looks for `workerd.config.ts` in the project root, but you can also point it at a custom config path or inline the config directly.
 
 `vite.config.ts`
 
@@ -61,20 +47,16 @@ export default defineConfig({
 });
 ```
 
-Then run:
+For a production build, run:
 
 ```sh
-npx vite build
+vite build
 workerd serve dist/workerd.capnp
 ```
 
-## Examples
+This bundles your workers and writes a `dist/workerd.capnp` file alongside the built worker modules. The generated `workerd.capnp` is plain text, so you can inspect it directly if you want to see the final config.
 
-- `examples/hello-world`: the smallest single-worker example
-- `examples/bundling`: a single worker that imports and uses an npm dependency
-- `examples/multi-workers`: a larger setup with multiple workers, bindings, typed RPC, and split TypeScript configs
-
-Example output:
+For example, the config above produces something like:
 
 ```capnp
 using Workerd = import "/workerd/workerd.capnp";
@@ -84,10 +66,6 @@ const config :Workerd.Config = (
       (
         name = "worker1",
         worker = .worker1,
-      ),
-      (
-        name = "worker:2",
-        worker = .worker2,
       ),
     ],
   sockets = [
@@ -108,25 +86,21 @@ const worker1 :Workerd.Worker = (
       ),
     ],
   compatibilityDate = "2026-01-01",
-  bindings = [
-      (
-        name = "AUTH",
-        service = (
-            name = "worker:2",
-            entrypoint = "Auth",
-            props = ( json = "{\"baseURL\":\"https://example.com\"}" ),
-          ),
-      ),
-    ],
-);
-
-const worker2 :Workerd.Worker = (
-  modules = [
-      (
-        name = "main",
-        esModule = embed "workers/worker2.js",
-      ),
-    ],
-  compatibilityDate = "2026-01-01",
 );
 ```
+
+For local development, run:
+
+```sh
+vite dev
+```
+
+This starts Vite in front of a real `workerd` process and proxies requests to it, so normal edits hot reload without manually restarting `workerd`.
+
+## Examples
+
+You can find more examples in the [examples](./examples) directory:
+
+- [Hello World](./examples/hello-world): one worker with a single `fetch()` handler.
+- [Bundling](./examples/bundling): shows how npm dependencies and dynamic imports `await import(...)` are bundled in the build output.
+- [Multi Workers](./examples/multi-workers): demonstrate multiple workers, JSRPC with type inference.
